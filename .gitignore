@@ -1,0 +1,7 @@
+bench/
+proof/
+__pycache__/
+*.pyc
+
+# installer build output
+/build/

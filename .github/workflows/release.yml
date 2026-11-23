@@ -1,0 +1,50 @@
+# Build the Windows installer when a version tag is pushed and attach it to a Release.
+# No auto-updater: to update, run the new setup over the old install (settings are kept).
+#   git tag v0.9.0 && git push origin v0.9.0
+# The tag must match __version__ in dictate/__init__.py.
+# Runs only on tags, so ordinary pushes use no Actions minutes.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller
+
+      - name: Check tag matches version
+        shell: bash
+        run: |
+          v=$(python -c "import dictate; print(dictate.__version__)")
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != version v$v"; exit 1; }
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+
+      - name: Install Inno Setup if missing
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+
+      - name: Build installer
+        shell: cmd
+        run: packaging\build.cmd
+
+      - name: Create release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "build/installer/dictate-setup-$VERSION.exe" \
+            --title "dictate $VERSION" --notes "Download dictate-setup-$VERSION.exe and run it. Windows says unknown publisher once: More info, then Run anyway."
